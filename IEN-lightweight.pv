@@ -1,0 +1,97 @@
+(*
+
+    In our paper, Data1, Data2 and res are the messages (including the authentication message) 
+    which user/GWN intended to be sent to GWN/user.  In order to complete it, in this program,
+    we assume that Data1, Data2 and res are secret between user/GWN and GWN/user.
+
+*)
+
+(* --Symmetric key encryption--*)
+
+type key.
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+
+
+(* --Hash operation-- *)
+
+fun h(key): key.
+
+(*--Concat operation--*)
+fun Concat(bitstring, bitstring): bitstring.
+reduc forall x: bitstring, y: bitstring; Split1(Concat(x,y)) = x.
+reduc forall x: bitstring, y: bitstring; Split2(Concat(x,y)) = y.
+
+
+(*--The basic variables--*)
+const Null: bitstring.
+(*free PID: bitstring. ---the pseudo identity shared by user and GWN--*)
+free Data1: bitstring[private]. (*---the authentication message between user and GWN--*)
+(*free Ki: bitstring[private]. --the shared one-time hash_chain between user and GWN--*)
+free Data2: bitstring[private].(*---the authentication message between GWN and user--*)
+free res: bitstring[private].(*---the authentication result between GWN and user--*)
+
+(*--Check PIDold operation--
+fun isNull(bitstring, bool): bitstring
+reduc forall Pold: bitstring; isNull(Pold, true) = Null
+otherwise forall Pold: bitstring; isNull(Pold, false) = Pold.*)
+
+free c:channel.
+
+(*free PIDnew:bitstring [private].*)
+query attacker(Data1).
+query attacker(Data2).
+(*query attacker(PIDnew).*)
+
+event acceptsUser(bitstring).
+event acceptsGWN(bitstring).
+event termUser(bitstring).
+event termGWN(bitstring).
+
+query x:bitstring; event(termUser(x))==>event(acceptsGWN(x)).
+query x:bitstring; inj-event(termGWN(x))==>inj-event(acceptsUser(x)).
+
+let clientU(PID:bitstring, Kui:key) = 
+	out(c,(PID,senc(Data1, Kui)));
+	event acceptsUser(PID);
+	in(c,x:bitstring); 
+	let m = sdec(x,Kui) in
+	let PID = Split1(m) in
+	let da2 = Split2(m) in
+	if da2 = Data2 then
+	   let Kui = h(Kui) in
+	out(c,senc(res, Kui));
+	event termUser(PID).
+
+let serverG(PIDnew:bitstring,PIDold:bitstring, Ksi:key) = 
+	in(c,(Pi:bitstring, ct:bitstring));
+	event acceptsGWN(PIDnew);
+	if PIDold = Pi then
+	   new Pnew:bitstring;
+	   let PIDnew = Pnew in
+
+	if PIDnew = Pi then
+	        if PIDold <> Null then
+	           let Ksi = h(Ksi) in
+	        if Data1= sdec(ct,Ksi) then
+               new Pnew:bitstring;
+	           let PIDnew = Pnew in
+	           let PIDold = Pi in
+
+	out(c,senc(Concat(PIDnew,Data2),Ksi));
+	
+	in(c,ct2:bitstring); 
+	if res = sdec(ct2,Ksi) then
+	   let Ksi = h(Ksi) in 
+	   let PIDold = Null in
+	event termGWN(PIDold).
+
+process 
+    new Kui:key;
+    new Ksi:key;
+	new PID:bitstring;
+	let PIDnew = PID in
+	let PIDold = Null in
+	let Kui =Ksi in
+	( (!clientU(PID,Kui)) | (!serverG(PIDold,PIDnew,Ksi)) )
